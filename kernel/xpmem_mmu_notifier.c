@@ -80,6 +80,8 @@ xpmem_invalidate_range(struct mmu_notifier *mn,
 #endif
 	struct xpmem_thread_group *seg_tg;
 	struct vm_area_struct *vma;
+	struct vma_iterator vmi;
+	int vm_found = 0;
 
 	seg_tg = container_of(mn, struct xpmem_thread_group, mmu_not);
 
@@ -103,13 +105,8 @@ xpmem_invalidate_range(struct mmu_notifier *mn,
 	/* NTH: Changes to the tlb code should have removed the need for gathering
 	 * the mmu here. There is not any state that needs to be restored */
 
-	vma = find_vma_intersection(mm, start, end);
-	if (vma == NULL) {
-		xpmem_invalidate_PTEs_range(seg_tg, start, end);
-		return;
-	}
-
-	for ( ; vma && vma->vm_start < end; vma = vma->vm_next) {
+	vma_iter_init(&vmi, mm, start);
+	for_each_vma_range(vmi, vma, end) {
 		unsigned long vm_start;
 		unsigned long vm_end;
 
@@ -135,7 +132,14 @@ xpmem_invalidate_range(struct mmu_notifier *mn,
 			continue;
 
 		xpmem_invalidate_PTEs_range(seg_tg, vm_start, vm_end);
+		vm_found = 1;
 	}
+
+	if (!vm_found) {
+		xpmem_invalidate_PTEs_range(seg_tg, start, end);
+		return;
+	}
+
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 13, 0)
